@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDay, MAX_DAYS, newDraft, removeDay, validateDraft, validateGuest } from './hunt';
+import { addDay, MAX_DAYS, mergeGuest, newDraft, removeDay, validateDraft, validateGuest } from './hunt';
 import type { Guest, HuntDraft } from './types';
 
 const now = Date.UTC(2026, 10, 1, 16, 0); // Nov 1, 11 AM New York
@@ -90,5 +90,23 @@ describe('validateGuest', () => {
 
   it('needs at least 10 phone digits', () => {
     expect(validateGuest({ ...ok, phone: '555-5555' })).toBe('Phone needs 10 digits');
+  });
+});
+
+describe('mergeGuest', () => {
+  const saved: Guest = { firstName: 'Test', lastName: 'Person', email: 'test@example.com', phone: '555-555-5555', wheelchair: false };
+
+  it('keeps the saved email and phone when the edit leaves them blank', () => {
+    const edit: Guest = { firstName: 'New', lastName: 'Name', email: ' ', phone: '', wheelchair: true };
+    expect(mergeGuest(saved, edit)).toEqual({ ...saved, firstName: 'New', lastName: 'Name', wheelchair: true });
+  });
+
+  it('uses new email and phone when given, trimmed', () => {
+    const edit: Guest = { ...saved, email: ' other@example.com ', phone: '555-555-0000' };
+    expect(mergeGuest(saved, edit)).toMatchObject({ email: 'other@example.com', phone: '555-555-0000' });
+  });
+
+  it('leaves blanks blank when nothing was saved before', () => {
+    expect(mergeGuest(null, { ...saved, email: '' }).email).toBe('');
   });
 });

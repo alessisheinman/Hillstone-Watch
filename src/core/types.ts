@@ -25,3 +25,16 @@ export interface HuntState {
 }
 export type CheckResult = { date: string; inventory: DayInventory } | { date: string; error: string };
 export type BookingOutcome = 'booked' | 'needs-you' | 'failed' | 'practice-ready';
+
+// ---- Site ⇄ extension protocol (window.postMessage envelopes: { source: 'hw-site' | 'hw-ext', msg }) ----
+export type SiteToExt =
+  | { type: 'hello' }
+  | { type: 'start'; draft: HuntDraft; practice?: boolean }
+  | { type: 'stop' }
+  | { type: 'saveGuest'; guest: Guest };
+/** What the page may see. Email and phone never travel back to the page. */
+export interface ExtSnapshot {
+  state: HuntState;
+  guest: { firstName: string; lastName: string; saved: boolean; wheelchair: boolean } | null;
+}
+export type ExtToSite = { type: 'snapshot'; snapshot: ExtSnapshot } | { type: 'error'; message: string };

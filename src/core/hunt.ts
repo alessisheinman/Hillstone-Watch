@@ -43,3 +43,10 @@ export function validateGuest(g: Guest): string | null {
   if (g.phone.replace(/\D/g, '').length < 10) return 'Phone needs 10 digits';
   return null;
 }
+
+/** The page never sees the saved email/phone, so leaving them blank in an edit means "keep what's saved". */
+export function mergeGuest(saved: Guest | null, edit: Guest): Guest {
+  const email = edit.email.trim() || saved?.email || '';
+  const phone = edit.phone.trim() || saved?.phone || '';
+  return { firstName: edit.firstName.trim(), lastName: edit.lastName.trim(), email, phone, wheelchair: edit.wheelchair };
+}
