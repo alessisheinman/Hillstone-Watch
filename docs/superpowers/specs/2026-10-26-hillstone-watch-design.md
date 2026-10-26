@@ -128,7 +128,16 @@ pop-up while on another tab).
 - Exact search pattern against the inventory endpoint to cover a window, and parsing of `times[]`.
 - How the extension drives Wisely's page (URL params if supported, otherwise UI steps) and how it detects
   booked / puzzle / failed. Discovering the exact form fields happens at build time, without submitting real
-  bookings (test the fill step up to, but not including, the final confirm; the first real booking is Adam's).
+  bookings (test the fill step up to, but not including, the final confirm).
+
+## End-to-end test booking (Adam's decision)
+
+Before the first real hunt, run one real hunt that books a real table under the name **Jane Doe**, then
+cancel it right away. Email and phone on that test must be Adam's own, so the confirmation (and its cancel
+link) reaches him — a booking nobody can cancel would leave Hillstone with a no-show. Adam types the test
+details into "Edit details" himself at test time (they are never written into code), triggers the hunt,
+confirms the booked/needs-you outcome is detected, cancels via Wisely's confirmation, then switches the
+details back to the client.
 - Site ↔ extension messaging mechanism.
 - Repo/site name (working name "Hillstone Watch"), extension icon, sound design.
 - Activity list length/retention.
