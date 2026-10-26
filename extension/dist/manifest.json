@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Hillstone Watch",
+  "version": "0.1.0",
+  "description": "Watches Hillstone Park Avenue South on Wisely and books the first table that fits.",
+  "permissions": ["alarms", "storage", "notifications", "offscreen", "tabs"],
+  "host_permissions": ["https://loyaltyapi.wisely.io/*", "https://reservations.getwisely.com/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["https://alessisheinman.github.io/Hillstone-Watch/*", "http://localhost:5173/*"],
+      "js": ["site-bridge.js"]
+    },
+    {
+      "matches": ["https://reservations.getwisely.com/hillstone-park-avenue*"],
+      "js": ["wisely-driver.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": { "128": "icon-128.png" }
+}

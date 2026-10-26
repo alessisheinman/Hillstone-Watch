@@ -64,7 +64,7 @@ export function onChecks(s: HuntState, results: CheckResult[], now: number): { s
       near = true;
       notes.push(`${formatNyDay(r.date)} closest ${formatNyTime(closest(r.inventory.slots, from, to).reservedTs)}`);
     } else {
-      notes.push(`${formatNyDay(r.date)} fully booked`);
+      notes.push(`${formatNyDay(r.date)} nothing open nearby`);
     }
   }
 
