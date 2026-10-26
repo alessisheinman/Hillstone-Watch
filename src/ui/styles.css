@@ -46,8 +46,8 @@ button, input { font: inherit; color: inherit; }
 .pill-hunting, .pill-booking, .pill-booked { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
 .pill-hunting i, .pill-booking i { background: #3c9a6b; box-shadow: 0 0 0 4px rgb(60 154 107 / 0.2); animation: pulse 1.6s ease-in-out infinite; }
 .pill-booked i { background: var(--accent); }
-.pill-needs-you { background: var(--bad); color: #fff; border-color: transparent; }
-.pill-needs-you i { background: #fff; }
+.pill-needs-you, .pill-unconfirmed { background: var(--bad); color: #fff; border-color: transparent; }
+.pill-needs-you i, .pill-unconfirmed i { background: #fff; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 7px rgb(60 154 107 / 0.05); } }
 
 .banner { border-radius: var(--radius); padding: 0.8rem 1rem; margin-bottom: 1rem; font-weight: 550; }

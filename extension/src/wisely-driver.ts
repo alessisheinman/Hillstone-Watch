@@ -1,3 +1,4 @@
+import { isConfirmationPath } from '../../src/core/inventory';
 import type { BookingOutcome, Guest, Match } from '../../src/core/types';
 import { findSlotButton, OPT_IN_LABEL, SEL } from './wisely-selectors';
 
@@ -99,14 +100,16 @@ async function fillGuest({ guest }: Job) {
   }
 }
 
-/** After pressing Complete: Wisely moves off /review on success, or shows an error, or asks for a puzzle. */
+/** After pressing Complete: Wisely moves to /…/<id>/confirm on success, or shows an error, or asks for a puzzle.
+ *  Anything else is reported as failed, which the hunt treats as "couldn't confirm" — never as a reason to rebook. */
 async function watchOutcome() {
   let askedForHelp = false;
   let end = Date.now() + 60_000;
   for (;;) {
-    if (!location.pathname.endsWith('/review')) return report('booked', location.pathname);
+    if (isConfirmationPath(location.pathname)) return report('booked', location.pathname);
+    if (!location.pathname.endsWith('/review')) return report('failed', `Wisely went to ${location.pathname}`);
     const error = document.querySelector(SEL.submitError);
-    if (visible(error)) return report('failed', text(error) || 'Wisely refused the booking');
+    if (visible(error)) return report('rejected', text(error) || 'Wisely refused the booking');
     const puzzle = [...document.querySelectorAll(SEL.arkoseFrame)].some((f) => (f as HTMLElement).getBoundingClientRect().height > 80);
     if (puzzle && !askedForHelp) {
       askedForHelp = true;
@@ -123,12 +126,15 @@ async function watchOutcome() {
 
 async function run() {
   const job = (await chrome.runtime.sendMessage({ kind: 'getJob' })) as Job | null;
-  if (!job || location.pathname.endsWith('/review')) return; // not a tab we're booking in
+  // Only start from the search page; any later page load in this tab (review, confirm…) must not start over.
+  if (!job || !/^\/hillstone-park-avenue\/?$/.test(location.pathname)) return;
   try {
     await searchAndPickSlot(job);
     await fillGuest(job);
     if (job.practice) return void (await report('practice-ready'));
-    (await waitFor(() => document.querySelector<HTMLElement>(SEL.complete), 'Complete Reservation button')).click();
+    const complete = await waitFor(() => document.querySelector<HTMLElement>(SEL.complete), 'Complete Reservation button');
+    await report('submitting'); // from here on, an unclear result must never lead to booking again
+    complete.click();
     await watchOutcome();
   } catch (e) {
     await report('failed', e instanceof Error ? e.message : String(e));

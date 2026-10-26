@@ -5,6 +5,11 @@ export const MERCHANT_ID = 278278;
 export const BOOKING_URL = 'https://reservations.getwisely.com/hillstone-park-avenue?g=midtown-parkave';
 const INVENTORY_URL = 'https://loyaltyapi.wisely.io/v2/web/reservations/inventory';
 
+/** Wisely's page after a successful booking: /:merchant/:reservationId/confirm (from its router). */
+export function isConfirmationPath(path: string): boolean {
+  return /^\/hillstone-park-avenue\/[^/]+\/confirm\/?$/.test(path);
+}
+
 /** Open times Wisely has within roughly ±6 hours of `time` (not the whole day — see searchPoints). */
 export function inventoryUrl(date: string, time: string, partySize: PartySize): string {
   const q = new URLSearchParams({

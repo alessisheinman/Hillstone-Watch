@@ -13,6 +13,7 @@ export function StatusPill({ state, now }: { state: HuntState; now: number }) {
     'needs-you': 'Needs you',
     booked: 'Booked',
     ended: 'Ended — no table',
+    unconfirmed: "Couldn't confirm",
   }[state.status];
   return (
     <span className={`pill pill-${state.status}`}>

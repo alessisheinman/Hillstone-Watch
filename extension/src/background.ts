@@ -1,8 +1,8 @@
 import { mergeGuest, validateDraft, validateGuest } from '../../src/core/hunt';
 import { BOOKING_URL, inventoryUrl, mergeInventories, parseInventory, searchPoints } from '../../src/core/inventory';
-import { daysToCheck, onBookingOutcome, onBookingTimeout, onChecks, start, stop } from '../../src/core/machine';
+import { canStart, daysToCheck, note, onBookingOutcome, onBookingTimeout, onChecks, recoverAfterRestart, start, stop } from '../../src/core/machine';
 import type { BookingOutcome, CheckResult, DayInventory, ExtSnapshot, ExtToSite, Guest, HuntDay, HuntState, PartySize, SiteToExt } from '../../src/core/types';
-import { alertBooked, alertEnded, alertNeedsYou, focusTab } from './alerts';
+import { alertBooked, alertEnded, alertNeedsYou, alertUnconfirmed, focusTab } from './alerts';
 import { loadGuest, loadJobTab, loadState, saveGuest, saveJobTab, saveState } from './storage';
 
 const CHECK = 'hw-check';
@@ -53,7 +53,16 @@ async function fetchDay(day: HuntDay, partySize: PartySize): Promise<CheckResult
   }
 }
 
+/** Never let a surprise stop the hunt silently: log it where Adam can see it. */
 async function runCheck() {
+  try {
+    await checkOnce();
+  } catch (e) {
+    await serial(async () => saveState(note(await loadState(), Date.now(), `Check crashed: ${e instanceof Error ? e.message : e}`, 'error')));
+  }
+}
+
+async function checkOnce() {
   const before = await loadState();
   const days = daysToCheck(before, Date.now());
   if (before.status !== 'hunting' || !before.draft) return;
@@ -83,13 +92,16 @@ async function handleSite(msg: SiteToExt): Promise<ExtToSite> {
     case 'start': {
       const problem = validateDraft(msg.draft, Date.now()) ?? (!(await loadGuest()) ? 'Save the guest details first' : null);
       if (problem) return error(problem);
-      const s = await serial(async () => {
-        const next = start(await loadState(), msg.draft, Date.now(), !!msg.practice);
+      const started = await serial(async () => {
+        const current = await loadState();
+        if (!canStart(current)) return false; // already hunting or booking — one at a time
+        const next = start(current, msg.draft, Date.now(), !!msg.practice);
         await saveState(next);
         await ensureAlarm(next);
-        return next;
+        return true;
       });
-      if (s.status === 'hunting') void runCheck(); // first check now, not in 30 s
+      if (!started) return error('A hunt is already running — stop it first');
+      void runCheck(); // first check now, not in 30 s
       break;
     }
     case 'stop':
@@ -119,11 +131,23 @@ async function handleOutcome(tabId: number | undefined, outcome: BookingOutcome,
     const next = onBookingOutcome(before, outcome, detail, Date.now());
     if (next === before) return;
     await saveState(next);
-    if (outcome !== 'needs-you') await chrome.alarms.clear(BOOKING_TIMEOUT);
-    if (outcome === 'booked' && next.booked) await alertBooked(next.booked);
-    if (outcome === 'needs-you') await alertNeedsYou(tabId);
-    if (outcome === 'failed') await closeJobTab();
-    if (outcome === 'booked' || outcome === 'practice-ready') await saveJobTab(null); // leave the tab open to look at
+    await chrome.alarms.clear(BOOKING_TIMEOUT);
+    if (outcome === 'submitting') {
+      // Wisely is working on it; if nothing comes back in 3 minutes the result counts as unconfirmed.
+      await chrome.alarms.create(BOOKING_TIMEOUT, { delayInMinutes: 3 });
+    } else if (next.status === 'booked' && next.booked) {
+      await saveJobTab(null); // leave the confirmation open to look at
+      await alertBooked(next.booked);
+    } else if (next.status === 'needs-you') {
+      await alertNeedsYou(tabId);
+    } else if (next.status === 'unconfirmed') {
+      await saveJobTab(null); // leave Wisely's page open so Adam can see what happened
+      await alertUnconfirmed(tabId);
+    } else if (outcome === 'practice-ready') {
+      await saveJobTab(null);
+    } else {
+      await closeJobTab(); // failed before submitting, or Wisely refused: try again on the next opening
+    }
     await ensureAlarm(next);
   });
 }
@@ -155,8 +179,14 @@ chrome.alarms.onAlarm.addListener((a) => {
       const before = await loadState();
       const next = onBookingTimeout(before, Date.now());
       if (next === before) return;
-      await closeJobTab();
       await saveState(next);
+      if (next.status === 'unconfirmed') {
+        const tabId = await loadJobTab();
+        await saveJobTab(null);
+        await alertUnconfirmed(tabId);
+      } else {
+        await closeJobTab();
+      }
       await ensureAlarm(next);
     });
   }
@@ -175,6 +205,14 @@ chrome.notifications.onClicked.addListener(() => {
   });
 });
 
-const resume = () => void loadState().then(ensureAlarm);
+// A restart loses the Wisely tab, so a booking in flight is resolved here rather than left hanging.
+const resume = () =>
+  void serial(async () => {
+    const before = await loadState();
+    const next = (await loadJobTab()) === null ? recoverAfterRestart(before, Date.now()) : before;
+    if (next !== before) await saveState(next);
+    if (next.status === 'unconfirmed') await alertUnconfirmed(null);
+    await ensureAlarm(next);
+  });
 chrome.runtime.onStartup.addListener(resume);
 chrome.runtime.onInstalled.addListener(resume);

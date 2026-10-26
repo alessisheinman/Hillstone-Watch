@@ -11,7 +11,8 @@ export interface Guest { firstName: string; lastName: string; email: string; pho
 export interface Slot { reservedTs: number; displayTime: string; typeId: number; typeName: string }
 export interface DayInventory { released: boolean; slots: Slot[] }
 
-export type Status = 'idle' | 'hunting' | 'booking' | 'needs-you' | 'booked' | 'ended';
+// 'unconfirmed': Complete Reservation was pressed but the result is unclear — never hunt again on our own.
+export type Status = 'idle' | 'hunting' | 'booking' | 'needs-you' | 'booked' | 'ended' | 'unconfirmed';
 export interface Match { date: string; slot: Slot; partySize: PartySize }
 export interface ActivityEntry { at: number; text: string; kind: 'info' | 'near' | 'hit' | 'error' }
 export interface HuntState {
@@ -22,9 +23,11 @@ export interface HuntState {
   current: Match | null; // the slot being booked right now
   booked: Match | null;
   practice: boolean; // fill Wisely's form but never press confirm
+  submitted: boolean; // Complete Reservation has been pressed for `current`
 }
 export type CheckResult = { date: string; inventory: DayInventory } | { date: string; error: string };
-export type BookingOutcome = 'booked' | 'needs-you' | 'failed' | 'practice-ready';
+// 'submitting': about to press Complete. 'rejected': Wisely said no after submit. 'failed': anything else that went wrong.
+export type BookingOutcome = 'submitting' | 'booked' | 'needs-you' | 'rejected' | 'failed' | 'practice-ready';
 
 // ---- Site ⇄ extension protocol (window.postMessage envelopes: { source: 'hw-site' | 'hw-ext', msg }) ----
 export type SiteToExt =

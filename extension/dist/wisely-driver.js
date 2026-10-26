@@ -1,5 +1,26 @@
 "use strict";
 (() => {
+  // src/core/time.ts
+  var ZONE = "America/New_York";
+  var partsFormat = new Intl.DateTimeFormat("en-US", {
+    timeZone: ZONE,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+  var timeFormat = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, hour: "numeric", minute: "2-digit" });
+  var dayFormat = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" });
+
+  // src/core/inventory.ts
+  function isConfirmationPath(path) {
+    return /^\/hillstone-park-avenue\/[^/]+\/confirm\/?$/.test(path);
+  }
+  var SPAN = 4 * 60;
+
   // extension/src/wisely-selectors.ts
   var SEL = {
     // Search page
@@ -134,9 +155,10 @@
     let askedForHelp = false;
     let end = Date.now() + 6e4;
     for (; ; ) {
-      if (!location.pathname.endsWith("/review")) return report("booked", location.pathname);
+      if (isConfirmationPath(location.pathname)) return report("booked", location.pathname);
+      if (!location.pathname.endsWith("/review")) return report("failed", `Wisely went to ${location.pathname}`);
       const error = document.querySelector(SEL.submitError);
-      if (visible(error)) return report("failed", text(error) || "Wisely refused the booking");
+      if (visible(error)) return report("rejected", text(error) || "Wisely refused the booking");
       const puzzle = [...document.querySelectorAll(SEL.arkoseFrame)].some((f) => f.getBoundingClientRect().height > 80);
       if (puzzle && !askedForHelp) {
         askedForHelp = true;
@@ -152,12 +174,14 @@
   }
   async function run() {
     const job = await chrome.runtime.sendMessage({ kind: "getJob" });
-    if (!job || location.pathname.endsWith("/review")) return;
+    if (!job || !/^\/hillstone-park-avenue\/?$/.test(location.pathname)) return;
     try {
       await searchAndPickSlot(job);
       await fillGuest(job);
       if (job.practice) return void await report("practice-ready");
-      (await waitFor(() => document.querySelector(SEL.complete), "Complete Reservation button")).click();
+      const complete = await waitFor(() => document.querySelector(SEL.complete), "Complete Reservation button");
+      await report("submitting");
+      complete.click();
       await watchOutcome();
     } catch (e) {
       await report("failed", e instanceof Error ? e.message : String(e));

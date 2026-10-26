@@ -39,6 +39,9 @@ function formatNyDay(date) {
 var MAX_DAYS = 5;
 function validateDraft(d, now) {
   if (d.days.length === 0) return "Pick a day";
+  if (![1, 2, 3, 4].includes(d.partySize)) return "Party size must be 1\u20134";
+  if (d.days.some((x) => !/^\d{4}-\d{2}-\d{2}$/.test(x.date))) return "Pick a date";
+  if (d.days.some((x) => !/^\d{2}:\d{2}$/.test(x.from) || !/^\d{2}:\d{2}$/.test(x.to))) return "Pick a time window";
   if (d.days.length > MAX_DAYS) return "Up to 5 days";
   if (new Set(d.days.map((x) => x.date)).size !== d.days.length) return "Each day can only be added once";
   for (const day of d.days) {
@@ -109,16 +112,20 @@ function mergeInventories(parts) {
 // src/core/machine.ts
 var ACTIVITY_LIMIT = 50;
 function initialState() {
-  return { status: "idle", draft: null, activity: [], lastCheckedAt: null, current: null, booked: null, practice: false };
+  return { status: "idle", draft: null, activity: [], lastCheckedAt: null, current: null, booked: null, practice: false, submitted: false };
 }
 function log(s, now, text, kind = "info") {
   return { ...s, activity: [{ at: now, text, kind }, ...s.activity].slice(0, ACTIVITY_LIMIT) };
 }
+var note = log;
 var label = (m) => `${formatNyDay(m.date)} ${m.slot.displayTime}`;
 var windowOf = (d) => [nyDateTimeToMs(d.date, d.from), nyDateTimeToMs(d.date, d.to)];
 function start(s, draft, now, practice = false) {
-  const next = { ...s, status: "hunting", draft, current: null, booked: null, practice, lastCheckedAt: null };
+  const next = { ...s, status: "hunting", draft, current: null, booked: null, practice, submitted: false, lastCheckedAt: null };
   return log(next, now, practice ? "Practice run started" : "Hunt started");
+}
+function canStart(s) {
+  return s.status !== "hunting" && s.status !== "booking" && s.status !== "needs-you";
 }
 function stop(s, now) {
   return log({ ...s, status: "idle", current: null }, now, "Stopped");
@@ -177,15 +184,29 @@ function onBookingOutcome(s, outcome, detail, now) {
   if (s.status !== "booking" && s.status !== "needs-you" || !s.current) return s;
   const m = s.current;
   switch (outcome) {
+    case "submitting":
+      return log({ ...s, submitted: true }, now, "Pressed Complete Reservation");
     case "booked":
-      return log({ ...s, status: "booked", booked: m, current: null }, now, `Booked ${label(m)}, party of ${m.partySize}`, "hit");
+      return log({ ...s, status: "booked", booked: m, current: null, submitted: false }, now, `Booked ${label(m)}, party of ${m.partySize}`, "hit");
     case "needs-you":
       return log({ ...s, status: "needs-you" }, now, "Wisely wants a puzzle solved \u2014 waiting for you", "error");
+    case "rejected":
+      return log({ ...s, status: "hunting", current: null, submitted: false }, now, `Wisely refused: ${detail} \u2014 still hunting`, "error");
     case "failed":
+      if (s.submitted) return unconfirmed(s, detail, now);
       return log({ ...s, status: "hunting", current: null }, now, `Booking failed: ${detail} \u2014 still hunting`, "error");
     case "practice-ready":
       return log({ ...s, status: "idle", current: null }, now, "Practice run filled the form \u2014 not confirmed");
   }
+}
+function unconfirmed(s, detail, now) {
+  const what = s.current ? `the ${label(s.current)} booking` : "the booking";
+  return log({ ...s, status: "unconfirmed", submitted: false }, now, `Couldn't confirm ${what} (${detail}) \u2014 check your email before hunting again`, "error");
+}
+function recoverAfterRestart(s, now) {
+  if (s.status !== "booking" && s.status !== "needs-you") return s;
+  if (s.submitted) return unconfirmed(s, "Chrome restarted mid-booking", now);
+  return log({ ...s, status: "hunting", current: null }, now, "Chrome restarted mid-booking \u2014 still hunting", "error");
 }
 function onBookingTimeout(s, now) {
   if (s.status !== "booking") return s;
@@ -223,6 +244,11 @@ async function alertNeedsYou(tabId) {
 }
 async function alertEnded() {
   await notify("hw-ended", "Hillstone hunt ended", "Every day in the hunt has passed without a table.", false);
+}
+async function alertUnconfirmed(tabId) {
+  if (tabId !== null) await focusTab(tabId).catch(() => void 0);
+  await notify("hw-unconfirmed", "\u26A0 Hillstone: couldn't confirm", "The booking was submitted but the result is unclear. Check the email/text from Wisely before hunting again.", true);
+  await beep(8, 660);
 }
 
 // extension/src/storage.ts
@@ -292,6 +318,13 @@ async function fetchDay(day, partySize) {
   }
 }
 async function runCheck() {
+  try {
+    await checkOnce();
+  } catch (e) {
+    await serial(async () => saveState(note(await loadState(), Date.now(), `Check crashed: ${e instanceof Error ? e.message : e}`, "error")));
+  }
+}
+async function checkOnce() {
   const before = await loadState();
   const days = daysToCheck(before, Date.now());
   if (before.status !== "hunting" || !before.draft) return;
@@ -318,13 +351,16 @@ async function handleSite(msg) {
     case "start": {
       const problem = validateDraft(msg.draft, Date.now()) ?? (!await loadGuest() ? "Save the guest details first" : null);
       if (problem) return error(problem);
-      const s = await serial(async () => {
-        const next = start(await loadState(), msg.draft, Date.now(), !!msg.practice);
+      const started = await serial(async () => {
+        const current = await loadState();
+        if (!canStart(current)) return false;
+        const next = start(current, msg.draft, Date.now(), !!msg.practice);
         await saveState(next);
         await ensureAlarm(next);
-        return next;
+        return true;
       });
-      if (s.status === "hunting") void runCheck();
+      if (!started) return error("A hunt is already running \u2014 stop it first");
+      void runCheck();
       break;
     }
     case "stop":
@@ -353,11 +389,22 @@ async function handleOutcome(tabId, outcome, detail) {
     const next = onBookingOutcome(before, outcome, detail, Date.now());
     if (next === before) return;
     await saveState(next);
-    if (outcome !== "needs-you") await chrome.alarms.clear(BOOKING_TIMEOUT);
-    if (outcome === "booked" && next.booked) await alertBooked(next.booked);
-    if (outcome === "needs-you") await alertNeedsYou(tabId);
-    if (outcome === "failed") await closeJobTab();
-    if (outcome === "booked" || outcome === "practice-ready") await saveJobTab(null);
+    await chrome.alarms.clear(BOOKING_TIMEOUT);
+    if (outcome === "submitting") {
+      await chrome.alarms.create(BOOKING_TIMEOUT, { delayInMinutes: 3 });
+    } else if (next.status === "booked" && next.booked) {
+      await saveJobTab(null);
+      await alertBooked(next.booked);
+    } else if (next.status === "needs-you") {
+      await alertNeedsYou(tabId);
+    } else if (next.status === "unconfirmed") {
+      await saveJobTab(null);
+      await alertUnconfirmed(tabId);
+    } else if (outcome === "practice-ready") {
+      await saveJobTab(null);
+    } else {
+      await closeJobTab();
+    }
     await ensureAlarm(next);
   });
 }
@@ -381,8 +428,14 @@ chrome.alarms.onAlarm.addListener((a) => {
       const before = await loadState();
       const next = onBookingTimeout(before, Date.now());
       if (next === before) return;
-      await closeJobTab();
       await saveState(next);
+      if (next.status === "unconfirmed") {
+        const tabId = await loadJobTab();
+        await saveJobTab(null);
+        await alertUnconfirmed(tabId);
+      } else {
+        await closeJobTab();
+      }
       await ensureAlarm(next);
     });
   }
@@ -397,6 +450,12 @@ chrome.notifications.onClicked.addListener(() => {
     if (tabId !== null) void focusTab(tabId);
   });
 });
-var resume = () => void loadState().then(ensureAlarm);
+var resume = () => void serial(async () => {
+  const before = await loadState();
+  const next = await loadJobTab() === null ? recoverAfterRestart(before, Date.now()) : before;
+  if (next !== before) await saveState(next);
+  if (next.status === "unconfirmed") await alertUnconfirmed(null);
+  await ensureAlarm(next);
+});
 chrome.runtime.onStartup.addListener(resume);
 chrome.runtime.onInstalled.addListener(resume);

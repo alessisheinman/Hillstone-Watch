@@ -27,6 +27,10 @@ export function removeDay(d: HuntDraft, index: number): HuntDraft {
 
 export function validateDraft(d: HuntDraft, now: number): string | null {
   if (d.days.length === 0) return 'Pick a day';
+  if (![1, 2, 3, 4].includes(d.partySize)) return 'Party size must be 1–4';
+  // A date/time box goes blank when part of it is deleted, so check the shape before any time maths.
+  if (d.days.some((x) => !/^\d{4}-\d{2}-\d{2}$/.test(x.date))) return 'Pick a date';
+  if (d.days.some((x) => !/^\d{2}:\d{2}$/.test(x.from) || !/^\d{2}:\d{2}$/.test(x.to))) return 'Pick a time window';
   if (d.days.length > MAX_DAYS) return 'Up to 5 days';
   if (new Set(d.days.map((x) => x.date)).size !== d.days.length) return 'Each day can only be added once';
   for (const day of d.days) {

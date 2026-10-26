@@ -7,19 +7,27 @@ import type { ActivityEntry, BookingOutcome, CheckResult, HuntDay, HuntDraft, Hu
 export const ACTIVITY_LIMIT = 50;
 
 export function initialState(): HuntState {
-  return { status: 'idle', draft: null, activity: [], lastCheckedAt: null, current: null, booked: null, practice: false };
+  return { status: 'idle', draft: null, activity: [], lastCheckedAt: null, current: null, booked: null, practice: false, submitted: false };
 }
 
 function log(s: HuntState, now: number, text: string, kind: ActivityEntry['kind'] = 'info'): HuntState {
   return { ...s, activity: [{ at: now, text, kind }, ...s.activity].slice(0, ACTIVITY_LIMIT) };
 }
 
+/** An activity line for things outside the hunt's own flow (e.g. an unexpected crash). */
+export const note = log;
+
 const label = (m: Match) => `${formatNyDay(m.date)} ${m.slot.displayTime}`;
 const windowOf = (d: HuntDay) => [nyDateTimeToMs(d.date, d.from), nyDateTimeToMs(d.date, d.to)] as const;
 
 export function start(s: HuntState, draft: HuntDraft, now: number, practice = false): HuntState {
-  const next: HuntState = { ...s, status: 'hunting', draft, current: null, booked: null, practice, lastCheckedAt: null };
+  const next: HuntState = { ...s, status: 'hunting', draft, current: null, booked: null, practice, submitted: false, lastCheckedAt: null };
   return log(next, now, practice ? 'Practice run started' : 'Hunt started');
+}
+
+/** One hunt (or booking) at a time: a second Start while one runs could book twice. */
+export function canStart(s: HuntState): boolean {
+  return s.status !== 'hunting' && s.status !== 'booking' && s.status !== 'needs-you';
 }
 
 export function stop(s: HuntState, now: number): HuntState {
@@ -87,15 +95,33 @@ export function onBookingOutcome(s: HuntState, outcome: BookingOutcome, detail: 
   if ((s.status !== 'booking' && s.status !== 'needs-you') || !s.current) return s;
   const m = s.current;
   switch (outcome) {
+    case 'submitting':
+      return log({ ...s, submitted: true }, now, 'Pressed Complete Reservation');
     case 'booked':
-      return log({ ...s, status: 'booked', booked: m, current: null }, now, `Booked ${label(m)}, party of ${m.partySize}`, 'hit');
+      return log({ ...s, status: 'booked', booked: m, current: null, submitted: false }, now, `Booked ${label(m)}, party of ${m.partySize}`, 'hit');
     case 'needs-you':
       return log({ ...s, status: 'needs-you' }, now, 'Wisely wants a puzzle solved — waiting for you', 'error');
+    case 'rejected':
+      return log({ ...s, status: 'hunting', current: null, submitted: false }, now, `Wisely refused: ${detail} — still hunting`, 'error');
     case 'failed':
+      // Once submitted, Wisely may already have made the booking: stop rather than risk a second table.
+      if (s.submitted) return unconfirmed(s, detail, now);
       return log({ ...s, status: 'hunting', current: null }, now, `Booking failed: ${detail} — still hunting`, 'error');
     case 'practice-ready':
       return log({ ...s, status: 'idle', current: null }, now, 'Practice run filled the form — not confirmed');
   }
+}
+
+function unconfirmed(s: HuntState, detail: string, now: number): HuntState {
+  const what = s.current ? `the ${label(s.current)} booking` : 'the booking';
+  return log({ ...s, status: 'unconfirmed', submitted: false }, now, `Couldn't confirm ${what} (${detail}) — check your email before hunting again`, 'error');
+}
+
+/** After Chrome or the extension restarts, a booking in flight has lost its tab. */
+export function recoverAfterRestart(s: HuntState, now: number): HuntState {
+  if (s.status !== 'booking' && s.status !== 'needs-you') return s;
+  if (s.submitted) return unconfirmed(s, 'Chrome restarted mid-booking', now);
+  return log({ ...s, status: 'hunting', current: null }, now, 'Chrome restarted mid-booking — still hunting', 'error');
 }
 
 export function onBookingTimeout(s: HuntState, now: number): HuntState {

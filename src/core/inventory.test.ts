@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import released from './__fixtures__/inventory-2026-11-02-party2.json';
 import unreleased from './__fixtures__/inventory-unreleased.json';
-import { inventoryUrl, mergeInventories, parseInventory, searchPoints } from './inventory';
+import { inventoryUrl, isConfirmationPath, mergeInventories, parseInventory, searchPoints } from './inventory';
 
 describe('inventoryUrl', () => {
   it('asks Wisely for open times around the searched time', () => {
@@ -64,5 +64,19 @@ describe('mergeInventories', () => {
 
   it('is not released if any search says so', () => {
     expect(mergeInventories([{ released: true, slots: [] }, { released: false, slots: [] }]).released).toBe(false);
+  });
+});
+
+describe('isConfirmationPath', () => {
+  it("recognises Wisely's confirmation page", () => {
+    expect(isConfirmationPath('/hillstone-park-avenue/abc123/confirm')).toBe(true);
+    expect(isConfirmationPath('/hillstone-park-avenue/abc123/confirm/')).toBe(true);
+  });
+
+  it('does not treat other pages as success', () => {
+    expect(isConfirmationPath('/hillstone-park-avenue/review')).toBe(false);
+    expect(isConfirmationPath('/hillstone-park-avenue')).toBe(false);
+    expect(isConfirmationPath('/hillstone-park-avenue/')).toBe(false);
+    expect(isConfirmationPath('/hillstone-park-avenue/abc123/cancel')).toBe(false);
   });
 });

@@ -38,3 +38,9 @@ export async function alertNeedsYou(tabId: number) {
 export async function alertEnded() {
   await notify('hw-ended', 'Hillstone hunt ended', 'Every day in the hunt has passed without a table.', false);
 }
+
+export async function alertUnconfirmed(tabId: number | null) {
+  if (tabId !== null) await focusTab(tabId).catch(() => undefined);
+  await notify('hw-unconfirmed', "⚠ Hillstone: couldn't confirm", 'The booking was submitted but the result is unclear. Check the email/text from Wisely before hunting again.', true);
+  await beep(8, 660);
+}

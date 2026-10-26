@@ -3,7 +3,7 @@ import released from './__fixtures__/inventory-2026-11-02-party2.json';
 import unreleased from './__fixtures__/inventory-unreleased.json';
 import { parseInventory } from './inventory';
 import {
-  ACTIVITY_LIMIT, daysToCheck, initialState, onBookingOutcome, onBookingTimeout, onChecks, start, stop,
+  ACTIVITY_LIMIT, canStart, daysToCheck, initialState, note, onBookingOutcome, onBookingTimeout, onChecks, recoverAfterRestart, start, stop,
 } from './machine';
 import type { CheckResult, HuntDraft, HuntState } from './types';
 
@@ -145,5 +145,78 @@ describe('start / stop', () => {
 
   it('stops', () => {
     expect(stop(hunting(draft('19:00', '21:00')), now).status).toBe('idle');
+  });
+});
+
+describe('after Complete Reservation is pressed (no double bookings)', () => {
+  const submitted = (): HuntState =>
+    onBookingOutcome(onChecks(hunting(draft('19:00', '21:00')), [ok('2026-11-02')], now).state, 'submitting', '', now);
+
+  it('remembers that the booking was submitted', () => {
+    const s = submitted();
+    expect(s.status).toBe('booking');
+    expect(s.submitted).toBe(true);
+  });
+
+  it('stops instead of hunting again when the result is unclear', () => {
+    const s = onBookingOutcome(submitted(), 'failed', 'No response from Wisely', now);
+    expect(s.status).toBe('unconfirmed');
+    expect(daysToCheck(s, now)).toEqual([]);
+    expect(s.activity[0].text).toContain('check your email');
+  });
+
+  it('stops instead of hunting again when the booking page times out after submitting', () => {
+    expect(onBookingTimeout(submitted(), now).status).toBe('unconfirmed');
+  });
+
+  it('goes back to hunting only when Wisely explicitly refuses', () => {
+    const s = onBookingOutcome(submitted(), 'rejected', 'This time is no longer available', now);
+    expect(s.status).toBe('hunting');
+    expect(s.submitted).toBe(false);
+    expect(s.activity[0].text).toContain('This time is no longer available');
+  });
+
+  it('still records a success after submitting', () => {
+    expect(onBookingOutcome(submitted(), 'booked', '', now).status).toBe('booked');
+  });
+});
+
+describe('canStart', () => {
+  it('refuses while a hunt or booking is running', () => {
+    const h = hunting(draft('19:00', '21:00'));
+    expect(canStart(h)).toBe(false);
+    expect(canStart(onChecks(h, [ok('2026-11-02')], now).state)).toBe(false);
+  });
+
+  it('allows a new hunt when idle, booked, ended or unconfirmed', () => {
+    expect(canStart(initialState())).toBe(true);
+    expect(canStart({ ...initialState(), status: 'unconfirmed' })).toBe(true);
+  });
+});
+
+describe('recoverAfterRestart', () => {
+  const booking = () => onChecks(hunting(draft('19:00', '21:00')), [ok('2026-11-02')], now).state;
+
+  it('goes back to hunting if the booking was never submitted', () => {
+    const s = recoverAfterRestart(booking(), now);
+    expect(s.status).toBe('hunting');
+    expect(s.current).toBeNull();
+  });
+
+  it('stops as unconfirmed if the booking may have gone through', () => {
+    expect(recoverAfterRestart(onBookingOutcome(booking(), 'submitting', '', now), now).status).toBe('unconfirmed');
+  });
+
+  it('leaves other states alone', () => {
+    const h = hunting(draft('19:00', '21:00'));
+    expect(recoverAfterRestart(h, now)).toBe(h);
+  });
+});
+
+describe('note', () => {
+  it('adds an activity line without changing anything else', () => {
+    const s = note(initialState(), now, 'Check crashed: boom', 'error');
+    expect(s.status).toBe('idle');
+    expect(s.activity[0]).toEqual({ at: now, text: 'Check crashed: boom', kind: 'error' });
   });
 });

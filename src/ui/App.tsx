@@ -26,11 +26,12 @@ export function App() {
     connect(window, (m) => {
       if (m.type === 'error') return setError(m.message);
       setError(null);
+      setConnected(true); // a slow-starting extension can answer after connect() has given up
       setSnapshot(m.snapshot);
       // Pick up the hunt the extension is already running (or last ran) when the page first opens.
       if (first && m.snapshot.state.draft) setDraft(m.snapshot.state.draft);
       first = false;
-    }).then(setConnected);
+    }).then((found) => setConnected((c) => c || found));
   }, []);
 
   useEffect(() => {
@@ -61,6 +62,12 @@ export function App() {
       {state?.status === 'booked' && state.booked && (
         <div className="banner good">
           ✓ Booked — {formatNyDay(state.booked.date)}, {state.booked.slot.displayTime}, party of {state.booked.partySize}
+        </div>
+      )}
+      {state?.status === 'unconfirmed' && (
+        <div className="banner bad">
+          ⚠ Couldn't confirm whether the booking went through, so the hunt stopped to avoid booking twice. Check the
+          email/text from Wisely (and the Wisely tab), then start again only if there's no reservation.
         </div>
       )}
       {state?.status === 'needs-you' && (

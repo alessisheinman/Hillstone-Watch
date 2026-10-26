@@ -110,3 +110,18 @@ describe('mergeGuest', () => {
     expect(mergeGuest(null, { ...saved, email: '' }).email).toBe('');
   });
 });
+
+describe('validateDraft with cleared fields', () => {
+  it('rejects a blank date instead of crashing', () => {
+    expect(validateDraft({ partySize: 2, days: [{ date: '', from: '19:00', to: '21:00' }] }, now)).toBe('Pick a date');
+  });
+
+  it('rejects a blank time', () => {
+    expect(validateDraft({ partySize: 2, days: [{ date: '2026-11-07', from: '', to: '21:00' }] }, now)).toBe('Pick a time window');
+    expect(validateDraft({ partySize: 2, days: [{ date: '2026-11-07', from: '19:00', to: '' }] }, now)).toBe('Pick a time window');
+  });
+
+  it('rejects a party size outside 1–4', () => {
+    expect(validateDraft({ partySize: 5 as never, days: [{ date: '2026-11-07', from: '19:00', to: '21:00' }] }, now)).toBe('Party size must be 1–4');
+  });
+});
