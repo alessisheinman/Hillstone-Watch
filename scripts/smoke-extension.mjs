@@ -11,18 +11,20 @@ const mode = process.argv[2] ?? 'poll';
 const EXE = join(process.env.LOCALAPPDATA, 'ms-playwright', 'chromium-1248', 'chrome-win64', 'chrome.exe');
 const EXT = fileURLToPath(new URL('../extension/dist/', import.meta.url));
 const SITE = 'http://localhost:5173/';
-const FAKE = { first: 'Test', last: 'Person', email: 'test@example.com', phone: '555-555-5555' };
+const FAKE = { first: 'Test', last: 'Person', email: 'test@example.com', phone: process.env.PHONE ?? '555-555-5555' };
 const log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** First day in the next week with an open time for 2, straight from Wisely. */
+// PARTY (1-4), TYPE (Dinner/Lunch) and FROM_DAY (days ahead) narrow the search.
+const PARTY = Number(process.env.PARTY ?? 2);
 async function findOpenSlot() {
-  for (let i = 1; i <= 7; i++) {
+  for (let i = Number(process.env.FROM_DAY ?? 1); i <= 7; i++) {
     const day = new Date(Date.now() + i * 864e5).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
     const ts = Date.parse(`${day}T12:00:00-05:00`);
-    const res = await fetch(`https://loyaltyapi.wisely.io/v2/web/reservations/inventory?merchant_id=278278&party_size=2&search_ts=${ts}&show_reservation_types=1&limit=50`);
+    const res = await fetch(`https://loyaltyapi.wisely.io/v2/web/reservations/inventory?merchant_id=278278&party_size=${PARTY}&search_ts=${ts}&show_reservation_types=1&limit=50`);
     const json = await res.json();
-    const t = json.types.flatMap((x) => x.times.map((s) => ({ ...s, type: x.reservation_type_name }))).find((s) => s.is_available && s.max_party_size >= 2);
+    const t = json.types.flatMap((x) => x.times.map((s) => ({ ...s, type: x.reservation_type_name }))).find((s) => s.is_available && s.max_party_size >= PARTY && s.min_party_size <= PARTY && (!process.env.TYPE || s.type === process.env.TYPE));
     if (t) {
       const hhmm = new Date(t.reserved_ts).toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' });
       return { day, hhmm, display: t.display_time, type: t.type };
@@ -60,6 +62,7 @@ const activity = () => page.locator('.log li').allInnerTexts();
 const status = () => page.locator('.pill').innerText();
 
 async function setWindow(day, from, to) {
+  await page.locator('.seg button', { hasText: String(PARTY) }).click();
   await page.getByLabel('Date').fill(day);
   await page.getByLabel('From').fill(from);
   await page.getByLabel('To').fill(to);
@@ -101,7 +104,14 @@ if (mode === 'book' || mode === 'practice') {
   log('status:', await status());
   log('activity:', (await activity()).slice(0, 4));
   log('Wisely tab still open:', !wisely.isClosed());
-  if (mode === 'practice' && !wisely.isClosed()) await wisely.screenshot({ path: join(tmpdir(), 'hw-practice.png'), fullPage: true });
+  if (mode === 'practice' && !wisely.isClosed()) {
+    await wisely.screenshot({ path: join(tmpdir(), 'hw-practice.png'), fullPage: true });
+    log('Wisely app state:', JSON.stringify(await wisely.evaluate(() => {
+      const st = document.querySelector('#app').__vue__.$store.state;
+      const r = st.reservation ?? {};
+      return { guest: st.api?.guest ?? r.guest, party: r.numberOfGuests?.value, time: r.time?.label ?? r.time?.reservedTs, url: location.pathname };
+    })));
+  }
   if (await page.getByRole('button', { name: 'Stop hunting' }).isVisible()) await page.getByRole('button', { name: 'Stop hunting' }).click();
 }
 
