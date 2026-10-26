@@ -6,3 +6,7 @@ export interface HuntDraft { partySize: PartySize; days: HuntDay[] }
 
 /** The person the table is booked for. Only ever kept in the extension's storage — never in code. */
 export interface Guest { firstName: string; lastName: string; email: string; phone: string; wheelchair: boolean }
+
+/** One open table time from Wisely. Lunch and Dinner can both list the same time. */
+export interface Slot { reservedTs: number; displayTime: string; typeId: number; typeName: string }
+export interface DayInventory { released: boolean; slots: Slot[] }
