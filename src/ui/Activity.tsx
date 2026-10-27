@@ -3,11 +3,9 @@ import type { ActivityEntry } from '../core/types';
 
 interface Props {
   entries: ActivityEntry[];
-  canPractice: boolean;
-  onPractice: () => void;
 }
 
-export function Activity({ entries, canPractice, onPractice }: Props) {
+export function Activity({ entries }: Props) {
   return (
     <section className="card">
       <h3>Activity</h3>
@@ -22,9 +20,6 @@ export function Activity({ entries, canPractice, onPractice }: Props) {
           ))}
         </ol>
       )}
-      <button type="button" className="link practice" disabled={!canPractice} onClick={onPractice}>
-        Practice run (fills the form, doesn't confirm)
-      </button>
     </section>
   );
 }

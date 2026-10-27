@@ -97,7 +97,11 @@ if (mode === 'book' || mode === 'practice') {
   await setWindow(slot.day, slot.hhmm, slot.hhmm);
   const tabOpened = ctx.waitForEvent('page', { predicate: (p) => p.url().includes('getwisely.com'), timeout: 20_000 });
   if (mode === 'book') await page.getByRole('button', { name: 'Start hunting' }).click();
-  else await page.getByRole('button', { name: /Practice run/ }).click();
+  else await page.evaluate(() => {
+    // The site has no practice button; ask the extension directly, the way the site would.
+    const draft = { partySize: Number(document.querySelector('.seg .on').textContent), days: [{ date: document.querySelector('[aria-label="Date"]').value, from: document.querySelector('[aria-label="From"]').value, to: document.querySelector('[aria-label="To"]').value }] };
+    window.postMessage({ source: 'hw-site', msg: { type: 'start', draft, practice: true } }, '*');
+  });
   const wisely = await tabOpened;
   log('Wisely tab opened:', wisely.url());
   await sleep(mode === 'book' ? 8_000 : 25_000);

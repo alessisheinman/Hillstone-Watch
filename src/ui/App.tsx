@@ -44,7 +44,7 @@ export function App() {
   const problem = validateDraft(draft, now);
   const blocker = !connected ? 'Extension not found' : !snapshot?.guest?.saved ? 'Save the guest details first' : problem;
 
-  const startHunt = (practice = false) => send(window, { type: 'start', draft, practice });
+  const startHunt = () => send(window, { type: 'start', draft });
   const saveGuest = (guest: Guest) => send(window, { type: 'saveGuest', guest });
 
   return (
@@ -81,16 +81,12 @@ export function App() {
           locked={busy}
           busy={busy}
           blocker={blocker}
-          onStart={() => startHunt()}
+          onStart={startHunt}
           onStop={() => send(window, { type: 'stop' })}
         />
         <div className="side">
           <GuestCard guest={snapshot?.guest ?? null} disabled={!connected} onSave={saveGuest} />
-          <Activity
-            entries={state?.activity ?? []}
-            canPractice={!busy && !blocker}
-            onPractice={() => startHunt(true)}
-          />
+          <Activity entries={state?.activity ?? []} />
         </div>
       </main>
       <p className="footnote">Works only while Chrome is open and the PC is awake.</p>

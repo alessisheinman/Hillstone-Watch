@@ -1,5 +1,5 @@
 // What we drive on reservations.getwisely.com/hillstone-park-avenue, mapped 2026-10-26.
-// If Wisely changes its page, this is the file to update (the Practice run shows quickly whether it still works).
+// If Wisely changes its page, this is the file to update (`node scripts/smoke-extension.mjs practice` shows quickly whether it still works).
 
 export const SEL = {
   // Search page

@@ -106,7 +106,6 @@ button.primary:disabled { background: var(--line-strong); }
 .log time { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 0.3rem; }
 .log .hit { color: var(--accent); font-weight: 750; }
 .log .error { color: var(--bad); }
-.practice { font-size: 0.82rem; margin-top: 12px; }
 
 @media (max-width: 760px) {
   .grid { grid-template-columns: 1fr; }

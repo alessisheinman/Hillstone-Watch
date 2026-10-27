@@ -33,9 +33,6 @@ After pulling a new version, press the reload arrow on the extension's card in `
 Hillstone releases tables 7 days ahead; a day further out shows "not released yet" and is booked the moment it
 opens. Online bookings max out at 4 people.
 
-**Practice run** (under Activity) does everything except press "Complete Reservation" — handy for checking it
-still works if Wisely changes its page.
-
 ## Never commit guest details
 
 This repo is public. Names, emails and phone numbers live only in the extension's storage — never in code,
@@ -51,4 +48,5 @@ npm run build:ext      # rebuild extension/dist (committed, so it can be loaded 
 node scripts/smoke-extension.mjs poll|practice   # end-to-end in a throwaway Chromium with fake details
 ```
 
-If Wisely changes its booking page, update `extension/src/wisely-selectors.ts` and check with a practice run.
+If Wisely changes its booking page, update `extension/src/wisely-selectors.ts` and check with
+`node scripts/smoke-extension.mjs practice` (fills Wisely's form with fake details, never presses Complete).
