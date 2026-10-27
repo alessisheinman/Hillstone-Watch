@@ -85,8 +85,18 @@ async function searchAndPickSlot({ match }: Job) {
   button.click();
 }
 
+/** What Wisely is showing instead, so a failure can be diagnosed from the Activity log alone. */
+function pageHint(): string {
+  const notes = [...document.querySelectorAll('[role="dialog"], [role="alert"], [class*="modal"], [class*="error"], [class*="toast"]')]
+    .filter(visible).map(text).filter(Boolean);
+  const said = (notes.length ? notes.join(' | ') : text(document.querySelector('main') ?? document.body)).slice(0, 160);
+  return `on ${location.pathname}: "${said}"`;
+}
+
 async function fillGuest({ guest }: Job) {
-  setInput(await waitFor(() => document.querySelector<HTMLInputElement>(SEL.firstName), 'guest form', 15_000), guest.firstName);
+  const first = await waitFor(() => document.querySelector<HTMLInputElement>(SEL.firstName), 'guest form', 15_000)
+    .catch(() => { throw new Error(`guest form not found ${pageHint()}`); });
+  setInput(first, guest.firstName);
   setInput(document.querySelector<HTMLInputElement>(SEL.lastName)!, guest.lastName);
   setInput(document.querySelector<HTMLInputElement>(SEL.email)!, guest.email);
   setInput(document.querySelector<HTMLInputElement>(SEL.phone)!, guest.phone.replace(/\D/g, '').slice(-10));

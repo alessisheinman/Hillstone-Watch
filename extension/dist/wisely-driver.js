@@ -139,8 +139,16 @@
     });
     button.click();
   }
+  function pageHint() {
+    const notes = [...document.querySelectorAll('[role="dialog"], [role="alert"], [class*="modal"], [class*="error"], [class*="toast"]')].filter(visible).map(text).filter(Boolean);
+    const said = (notes.length ? notes.join(" | ") : text(document.querySelector("main") ?? document.body)).slice(0, 160);
+    return `on ${location.pathname}: "${said}"`;
+  }
   async function fillGuest({ guest }) {
-    setInput(await waitFor(() => document.querySelector(SEL.firstName), "guest form", 15e3), guest.firstName);
+    const first = await waitFor(() => document.querySelector(SEL.firstName), "guest form", 15e3).catch(() => {
+      throw new Error(`guest form not found ${pageHint()}`);
+    });
+    setInput(first, guest.firstName);
     setInput(document.querySelector(SEL.lastName), guest.lastName);
     setInput(document.querySelector(SEL.email), guest.email);
     setInput(document.querySelector(SEL.phone), guest.phone.replace(/\D/g, "").slice(-10));
